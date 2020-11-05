@@ -17,7 +17,7 @@ namespace Game
         // 用于关闭恢复描边效果
         Material mCachedMat = null;
 
-    #if UNITY_EDITOR
+        #if UNITY_EDITOR
 
         protected override void Awake()
         {
@@ -25,7 +25,7 @@ namespace Game
 
             if (base.graphic != null && base.graphic.material == base.graphic.defaultMaterial)
             {
-                base.graphic.material = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Materials/TextOutline.mat");
+                base.graphic.material = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/TextOutline.mat");
             }
         }
 
@@ -39,7 +39,7 @@ namespace Game
             }
         }
 
-    #endif
+        #endif
 
         protected override void Start()
         {
@@ -130,38 +130,20 @@ namespace Game
                 // 计算中心点坐标
                 Vector2 minPos = _Min(v1.position, v2.position, v3.position);
                 Vector2 maxPos = _Max(v1.position, v2.position, v3.position);
-                Vector2 center = (maxPos + minPos) * 0.5f;
+                Vector2 centerPos = (maxPos + minPos) * 0.5f;
 
                 // 计算原始uv范围
                 Vector2 minUV = _Min(v1.uv0, v2.uv0, v3.uv0);
                 Vector2 maxUV = _Max(v1.uv0, v2.uv0, v3.uv0);
+                Vector2 centerUV = (minUV + maxUV) * 0.5f;
 
-                // 计算uv的单位长度
-                Vector2 triX, triY, uvX, uvY;
-                Vector2 pos1 = v1.position;
-                Vector2 pos2 = v2.position;
-                Vector2 pos3 = v3.position;
-                if (Mathf.Abs(Vector2.Dot((pos2 - pos1).normalized, Vector2.right))
-                    > Mathf.Abs(Vector2.Dot((pos3 - pos2).normalized, Vector2.right)))
-                {
-                    triX = pos2 - pos1;
-                    triY = pos3 - pos2;
-                    uvX = v2.uv0 - v1.uv0;
-                    uvY = v3.uv0 - v2.uv0;
-                }
-                else
-                {
-                    triX = pos3 - pos2;
-                    triY = pos2 - pos1;
-                    uvX = v3.uv0 - v2.uv0;
-                    uvY = v2.uv0 - v1.uv0;
-                }
-                Vector2 perU = uvX / triX.magnitude * (Vector2.Dot(triX, Vector2.right) > 0 ? 1 : -1);
-                Vector2 perV = uvY / triY.magnitude * (Vector2.Dot(triY, Vector2.up) > 0 ? 1 : -1);
+                // 计算单位距离对应的uv值
+                float perU = (maxUV.x - minUV.x) / (maxPos.x - minPos.x);
+                float perV = (maxUV.y - minUV.y) / (maxPos.y - minPos.y);
 
-                SetNewVertexInfo(ref v1, center, perU, perV, minUV, maxUV);
-                SetNewVertexInfo(ref v2, center, perU, perV, minUV, maxUV);
-                SetNewVertexInfo(ref v3, center, perU, perV, minUV, maxUV);
+                SetNewVertexInfo(ref v1, centerPos, centerUV, perU, perV, minUV, maxUV);
+                SetNewVertexInfo(ref v2, centerPos, centerUV, perU, perV, minUV, maxUV);
+                SetNewVertexInfo(ref v3, centerPos, centerUV, perU, perV, minUV, maxUV);
 
                 verts[i] = v1;
                 verts[i + 1] = v2;
@@ -173,52 +155,47 @@ namespace Game
         /// 设置新的顶点数据
         /// </summary>
         /// <param name="v"></param>
-        /// <param name="center"></param>
+        /// <param name="centerPos"></param>
         /// <param name="perU"></param>
         /// <param name="perV"></param>
         /// <param name="minUV"></param>
         /// <param name="maxUV"></param>
-        void SetNewVertexInfo(ref UIVertex v, Vector2 center,
-            Vector2 perU, Vector2 perV, Vector2 minUV, Vector2 maxUV)
+        void SetNewVertexInfo(ref UIVertex v, Vector2 centerPos, Vector2 centerUV,
+            float perU, float perV, Vector2 minUV, Vector2 maxUV)
         {
-            // Position
-            var pos = v.position;
-            var posXOffset = pos.x > center.x ? OutlineDistance.x : -OutlineDistance.x;
-            var posYOffset = pos.y > center.y ? OutlineDistance.y : -OutlineDistance.y;
-            pos.x += posXOffset;
-            pos.y += posYOffset;
+            // 新顶点坐标
+            Vector3 pos = v.position;
+            float xoffset = pos.x > centerPos.x ? OutlineDistance.x : -OutlineDistance.x;
+            float yOffset = pos.y > centerPos.y ? OutlineDistance.y : -OutlineDistance.y;
+            pos.x += xoffset;
+            pos.y += yOffset;
             v.position = pos;
-            // UV
-            var uv = v.uv0;
-            uv += perU * posXOffset;
-            uv += perV * posYOffset;
+
+            // 新uv
+            Vector2 uv = v.uv0;
+            xoffset = uv.x > centerUV.x ? OutlineDistance.x : -OutlineDistance.x;
+            yOffset = uv.y > centerUV.y ? OutlineDistance.y : -OutlineDistance.y;
+            uv.x += perU * xoffset;
+            uv.y += perV * yOffset;
             v.uv0 = uv;
 
-            v.uv1 = minUV; //uv1 uv2 可用  tangent  normal 在缩放情况 会有问题
+            // 原始uv
+            v.uv1 = minUV;
             v.uv2 = maxUV;
 
+            // 描边数据
             v.uv3 = OutlineDistance;
             v.tangent = OutlineColor;
         }
 
         Vector2 _Min(Vector2 pA, Vector2 pB, Vector2 pC)
         {
-            return new Vector2(_Min(pA.x, pB.x, pC.x), _Min(pA.y, pB.y, pC.y));
-        }
-
-        float _Min(float pA, float pB, float pC)
-        {
-            return Mathf.Min(Mathf.Min(pA, pB), pC);
+            return new Vector2(Mathf.Min(pA.x, pB.x, pC.x), Mathf.Min(pA.y, pB.y, pC.y));
         }
 
         Vector2 _Max(Vector2 pA, Vector2 pB, Vector2 pC)
         {
-            return new Vector2(_Max(pA.x, pB.x, pC.x), _Max(pA.y, pB.y, pC.y));
-        }
-
-        float _Max(float pA, float pB, float pC)
-        {
-            return Mathf.Max(Mathf.Max(pA, pB), pC);
+            return new Vector2(Mathf.Max(pA.x, pB.x, pC.x), Mathf.Max(pA.y, pB.y, pC.y));
         }
     }
 }
